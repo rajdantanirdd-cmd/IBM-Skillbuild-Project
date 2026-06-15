@@ -1,0 +1,392 @@
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
+import feedparser 
+from flask import Flask, jsonify, render_template, request
+
+BASE_DIR = Path(__file__).resolve().parent
+app = Flask(__name__)
+
+NEWS_FEEDS = [
+    ("BleepingComputer", "https://www.bleepingcomputer.com/feed/"),
+    ("The Hacker News", "https://feeds.feedburner.com/TheHackersNews"),
+    ("Krebs on Security", "https://krebsonsecurity.com/feed/"),
+]
+
+
+def load_quiz_questions():
+    quiz_path = BASE_DIR / "data" / "quiz_questions.json"
+    with open(quiz_path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def fetch_cyber_news(limit=12):
+    """Fetch latest articles from public RSS feeds."""
+    articles = []
+
+    for source, url in NEWS_FEEDS:
+        try:
+            feed = feedparser.parse(url)
+            for entry in feed.entries[:4]:
+                published = entry.get("published", entry.get("updated", ""))
+                articles.append(
+                    {
+                        "title": entry.get("title", "Untitled"),
+                        "link": entry.get("link", "#"),
+                        "summary": _clean_summary(entry.get("summary", "")),
+                        "source": source,
+                        "published": published,
+                    }
+                )
+        except Exception:
+            continue
+
+    articles.sort(key=lambda x: x.get("published", ""), reverse=True)
+    return articles[:limit]
+
+
+def _clean_summary(text, max_length=180):
+    import re
+
+    clean = re.sub(r"<[^>]+>", "", text)
+    clean = clean.replace("&nbsp;", " ").strip()
+    if len(clean) > max_length:
+        return clean[: max_length - 3].rsplit(" ", 1)[0] + "..."
+    return clean or "Read the full article for details."
+
+
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+
+@app.route("/training")
+def training():
+    modules = [
+        {
+            "id": 1,
+            "title": "Introduction to Cybersecurity",
+            "duration": "15 min",
+            "level": "Beginner",
+            "topics": [
+                "What cybersecurity means in everyday life",
+                "Why everyone — not just IT — needs to care",
+                "The CIA triad: Confidentiality, Integrity, Availability",
+                "Your role as the first line of defense",
+            ],
+        },
+        {
+            "id": 2,
+            "title": "Passwords & Authentication",
+            "duration": "20 min",
+            "level": "Beginner",
+            "topics": [
+                "Creating strong, unique passwords",
+                "Password managers — what they are and why to use one",
+                "Multi-factor authentication (MFA / 2FA)",
+                "Recognizing credential theft attempts",
+            ],
+        },
+        {
+            "id": 3,
+            "title": "Email & Phishing Defense",
+            "duration": "25 min",
+            "level": "Beginner",
+            "topics": [
+                "Anatomy of a phishing email",
+                "Red flags: urgency, spoofed senders, bad links",
+                "Spear phishing and business email compromise",
+                "How to report suspicious messages",
+            ],
+        },
+        {
+            "id": 4,
+            "title": "Safe Browsing & Downloads",
+            "duration": "20 min",
+            "level": "Beginner",
+            "topics": [
+                "Identifying secure vs. risky websites",
+                "Browser security settings and extensions",
+                "Safe software download practices",
+                "Recognizing fake pop-ups and scareware",
+            ],
+        },
+        {
+            "id": 5,
+            "title": "Device & Network Security",
+            "duration": "20 min",
+            "level": "Beginner",
+            "topics": [
+                "Keeping operating systems and apps updated",
+                "Using antivirus and firewalls",
+                "Public Wi-Fi risks and VPN basics",
+                "Physical security: locks, screens, USB devices",
+            ],
+        },
+        {
+            "id": 6,
+            "title": "Data Protection & Privacy",
+            "duration": "25 min",
+            "level": "Beginner",
+            "topics": [
+                "Understanding personal and work data",
+                "Secure file sharing and cloud storage",
+                "Social media privacy settings",
+                "What to do if data is exposed",
+            ],
+        },
+    ]
+    return render_template("training.html", modules=modules)
+
+
+@app.route("/threats")
+def threats():
+    threat_list = [
+        {
+            "name": "Phishing",
+            "icon": "🎣",
+            "severity": "High",
+            "description": "Fake emails, texts, or websites designed to steal your login credentials, financial info, or install malware.",
+            "signs": [
+                "Urgent language ('Act now or your account will be closed!')",
+                "Misspelled sender addresses (paypa1.com instead of paypal.com)",
+                "Generic greetings ('Dear Customer' instead of your name)",
+                "Suspicious links — hover to check the real URL",
+            ],
+            "prevention": "Verify senders, never click suspicious links, report phishing to your IT team.",
+        },
+        {
+            "name": "Malware",
+            "icon": "🦠",
+            "severity": "High",
+            "description": "Malicious software including viruses, trojans, spyware, and worms that harm devices or steal data.",
+            "signs": [
+                "Computer suddenly runs very slow",
+                "Pop-ups appear even when browser is closed",
+                "Files you didn't create appear on your system",
+                "Antivirus is disabled without your action",
+            ],
+            "prevention": "Keep software updated, don't download from untrusted sources, use reputable antivirus.",
+        },
+        {
+            "name": "Ransomware",
+            "icon": "🔒",
+            "severity": "Critical",
+            "description": "Malware that encrypts your files and demands payment (usually cryptocurrency) to restore access.",
+            "signs": [
+                "Files suddenly can't be opened",
+                "A ransom note appears on your screen",
+                "File extensions change to unknown types (.locked, .encrypted)",
+                "Network shares become inaccessible",
+            ],
+            "prevention": "Regular backups, patch systems promptly, never pay ransoms without consulting experts.",
+        },
+        {
+            "name": "Social Engineering",
+            "icon": "🎭",
+            "severity": "High",
+            "description": "Psychological manipulation to trick people into giving up confidential information or access.",
+            "signs": [
+                "Caller claims to be IT and asks for your password",
+                "Someone impersonates a boss requesting a wire transfer",
+                "Free gifts or prizes that seem too good to be true",
+                "Requests to bypass normal security procedures",
+            ],
+            "prevention": "Verify identities through official channels, follow company procedures, trust your instincts.",
+        },
+        {
+            "name": "Password Attacks",
+            "icon": "🔑",
+            "severity": "High",
+            "description": "Attempts to crack or steal passwords through brute force, dictionary attacks, or credential stuffing.",
+            "signs": [
+                "Login alerts from locations you don't recognize",
+                "Account locked due to too many failed attempts",
+                "Password reset emails you didn't request",
+                "Same password used across multiple breached sites",
+            ],
+            "prevention": "Use unique strong passwords, enable MFA, use a password manager.",
+        },
+        {
+            "name": "Man-in-the-Middle (MitM)",
+            "icon": "👁️",
+            "severity": "Medium",
+            "description": "Attackers intercept communication between you and a service to eavesdrop or alter data.",
+            "signs": [
+                "Browser warnings about certificate errors",
+                "Unexpected disconnections on public Wi-Fi",
+                "Data sent over unencrypted HTTP connections",
+                "Fake Wi-Fi hotspots with names like 'Free Airport WiFi'",
+            ],
+            "prevention": "Use HTTPS, avoid sensitive tasks on public Wi-Fi, use a VPN when needed.",
+        },
+    ]
+    return render_template("threats.html", threats=threat_list)
+
+
+@app.route("/tips")
+def tips():
+    security_tips = [
+        {
+            "category": "Passwords",
+            "icon": "🔐",
+            "tips": [
+                "Use at least 12 characters with mixed letters, numbers, and symbols",
+                "Never reuse passwords across different accounts",
+                "Use a password manager to generate and store unique passwords",
+                "Enable multi-factor authentication on every account that supports it",
+            ],
+        },
+        {
+            "category": "Email Safety",
+            "icon": "📧",
+            "tips": [
+                "Think before you click — verify unexpected attachments and links",
+                "Check the sender's email address carefully, not just the display name",
+                "Report phishing emails instead of deleting them silently",
+                "Don't send sensitive data (SSN, passwords) via email",
+            ],
+        },
+        {
+            "category": "Device Security",
+            "icon": "💻",
+            "tips": [
+                "Install updates as soon as they're available",
+                "Lock your screen when stepping away (Win+L on Windows)",
+                "Encrypt your hard drive (BitLocker on Windows, FileVault on Mac)",
+                "Don't leave devices unattended in public places",
+            ],
+        },
+        {
+            "category": "Browsing & Downloads",
+            "icon": "🌐",
+            "tips": [
+                "Look for the padlock icon and 'https://' in the address bar",
+                "Download software only from official websites or app stores",
+                "Be wary of 'Your computer is infected!' pop-ups — they're usually scams",
+                "Clear browser cookies and cache periodically",
+            ],
+        },
+        {
+            "category": "Social Media",
+            "icon": "📱",
+            "tips": [
+                "Review privacy settings regularly on all platforms",
+                "Don't share vacation plans publicly (signals an empty home)",
+                "Be cautious about quizzes and apps that request excessive permissions",
+                "Think twice before posting personal details like birthdate or address",
+            ],
+        },
+        {
+            "category": "Work & Remote",
+            "icon": "🏠",
+            "tips": [
+                "Use company VPN when working remotely",
+                "Separate work and personal accounts on the same device",
+                "Shred documents containing sensitive information",
+                "Follow your organization's security policies — they exist for a reason",
+            ],
+        },
+    ]
+    return render_template("tips.html", tip_groups=security_tips)
+
+
+@app.route("/quiz")
+def quiz():
+    questions = load_quiz_questions()
+    return render_template("quiz.html", question_count=len(questions))
+
+
+@app.route("/api/quiz/questions")
+def api_quiz_questions():
+    questions = load_quiz_questions()
+    safe_questions = [
+        {
+            "id": q["id"],
+            "question": q["question"],
+            "options": q["options"],
+        }
+        for q in questions
+    ]
+    return jsonify(safe_questions)
+
+
+@app.route("/api/quiz/submit", methods=["POST"])
+def api_quiz_submit():
+    data = request.get_json()
+    answers = data.get("answers", {})
+    questions = load_quiz_questions()
+
+    results = []
+    score = 0
+
+    for q in questions:
+        qid = str(q["id"])
+        user_answer = answers.get(qid)
+        is_correct = user_answer == q["correct"]
+        if is_correct:
+            score += 1
+        results.append(
+            {
+                "id": q["id"],
+                "correct": is_correct,
+                "correct_answer": q["correct"],
+                "explanation": q["explanation"],
+            }
+        )
+
+    total = len(questions)
+    percentage = round((score / total) * 100) if total else 0
+
+    if percentage >= 90:
+        grade = "Expert"
+        message = "Outstanding! You have excellent security awareness."
+    elif percentage >= 70:
+        grade = "Proficient"
+        message = "Great job! Review the topics you missed to strengthen your knowledge."
+    elif percentage >= 50:
+        grade = "Developing"
+        message = "Good start! We recommend completing the training modules."
+    else:
+        grade = "Beginner"
+        message = "Keep learning! Explore our training modules and threat guides."
+
+    return jsonify(
+        {
+            "score": score,
+            "total": total,
+            "percentage": percentage,
+            "grade": grade,
+            "message": message,
+            "results": results,
+        }
+    )
+
+
+@app.route("/news")
+def news():
+    articles = fetch_cyber_news()
+    fallback = len(articles) == 0
+    return render_template(
+        "news.html",
+        articles=articles,
+        fallback=fallback,
+        last_updated=datetime.now().strftime("%B %d, %Y at %I:%M %p"),
+    )
+
+
+if __name__ == "__main__":
+    print("\n" + "=" * 50)
+    print("  CyberShield Security Training Website")
+    print("=" * 50)
+    print("\n  Open your browser and go to:")
+    print("  http://127.0.0.1:8080")
+    print("\n  Press Ctrl+C to stop the server.\n")
+    app.run(debug=True, host="127.0.0.1", port=8080)
